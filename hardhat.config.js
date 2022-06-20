@@ -16,6 +16,8 @@ const RINKEBY_URL = process.env.RINKEBY_URL;
 const MNEMONIC = process.env.MNEMONIC;
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 
+require('./tasks/createGame');
+
 /**
  * @type import('hardhat/config').HardhatUserConfig
  */

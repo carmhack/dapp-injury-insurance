@@ -1,19 +1,12 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.0;
-
-import "@openzeppelin/contracts/utils/Counters.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-import "@chainlink/contracts/src/v0.8/VRFConsumerBase.sol";
 import "hardhat/console.sol";
 
 /*
-Deployed at 0x75a5f2d25e3885ecde76f5327f423ec228d11c06
-https://rinkeby.etherscan.io/address/0x75a5f2d25e3885ecde76f5327f423ec228d11c06
+Deployed at 0x2FA70990b49cb4d689201Bafb205DDfE12f57B49
+https://rinkeby.etherscan.io/address/0x2FA70990b49cb4d689201Bafb205DDfE12f57B49
 */
-contract LotteryGame is VRFConsumerBase {
-    using Counters for Counters.Counter;
-    using SafeMath for uint256;
-
+contract LotteryGame {
     struct Game {
         uint256 id;
         address[] players;
@@ -24,23 +17,14 @@ contract LotteryGame is VRFConsumerBase {
         uint256 endDate;
     }
 
-    Counters.Counter private currentId;
+    uint256 private currentId;
     mapping(uint256 => Game) private games;
-    mapping(uint256 => uint256) playersCount;
-    mapping(bytes32 => uint256) private randomnessReq;
-    bytes32 private keyHash;
-    uint256 private fee;
+    mapping(uint256 => mapping(address => bool)) private uniquePlayers;
     address private owner;
 
-    constructor(
-        address vrfCoordinator, 
-        address link, 
-        bytes32 _keyHash, 
-        uint256 _fee
-    ) VRFConsumerBase(vrfCoordinator, link) {
-        keyHash = _keyHash;
-        fee = _fee;
+    constructor() {
         owner = msg.sender;
+        currentId = 0;
     }
 
     modifier onlyOwner {
@@ -52,7 +36,7 @@ contract LotteryGame is VRFConsumerBase {
         require(_price > 0, "Ticket price must be greater than zero");
         require(_seconds > 0, "Game time must be greater than zero");
         Game memory newGame = Game({
-            id: currentId.current(),
+            id: currentId,
             players: new address[](0),
             total: 0,
             price: _price,
@@ -61,8 +45,8 @@ contract LotteryGame is VRFConsumerBase {
             endDate: block.timestamp + _seconds * 1 seconds
         });
 
-        games[currentId.current()] = newGame;
-        currentId.increment();
+        games[currentId] = newGame;
+        currentId++;
     }
 
     function takePart(uint256 _gameId) public payable {
@@ -72,35 +56,34 @@ contract LotteryGame is VRFConsumerBase {
         
         game.players.push(msg.sender);
         game.total += msg.value;
+        bool alreadyTakePart = uniquePlayers[_gameId][msg.sender];
+        // Player can only take part 1 time
+        if (alreadyTakePart == false) {
+            uniquePlayers[_gameId][msg.sender] = true;
+        }
     }
 
     function pickWinner(uint256 _gameId) public onlyOwner {
         Game storage game = games[_gameId];
         require(block.timestamp < game.endDate, "Game is already complete");
         require(!game.hasWinner, "Game has already a winner");
-        if (playersCount[_gameId] == 1) {
+        if (game.players.length == 1) {
             require(game.players[0] != address(0), "There are no players in this game");
             game.winner = game.players[0];
             game.hasWinner = true;
             (bool success, ) = game.winner.call{value: game.total}("");
             require(success, "Transfer failed");
         } else {
-            require(LINK.balanceOf(address(this)) >= fee, "Not enough LINK");
-            bytes32 requestId = requestRandomness(keyHash, fee);
-            randomnessReq[requestId] = _gameId;
+            uint256 winner = random(game.players) % game.players.length;
+            game.winner = game.players[winner];
+            game.hasWinner = true;
+            (bool success, ) = game.winner.call{value: game.total }("");
+            require(success, "Transfer failed");
         }
     }
 
-    function fulfillRandomness(bytes32 requestId, uint256 randomness) internal override {
-        uint256 _gameId = randomnessReq[requestId];
-        Game storage game = games[_gameId];
-        uint256 winner = randomness.mod(game.players.length);
-        game.hasWinner = true;
-        game.winner = game.players[winner];
-        delete randomnessReq[requestId];
-        delete playersCount[_gameId];
-        (bool success, ) = game.winner.call{value: game.total }("");
-        require(success, "Transfer failed");
+    function random(address[] memory _players) public view returns(uint256){
+        return uint256(keccak256(abi.encodePacked(block.difficulty, block.timestamp, _players)));
     }
 
     function getGame(uint256 _gameId) public view returns (Game memory) {
@@ -108,6 +91,10 @@ contract LotteryGame is VRFConsumerBase {
     }
 
     function getGamesCount() public view returns(uint256) {
-        return currentId.current();
+        return currentId;
+    }
+    
+    function getOwner() public view returns (address) {
+        return owner;
     }
 }

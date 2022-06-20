@@ -5,10 +5,13 @@ import "./App.css";
 
 function App() {
   const [isWalletConnected, setIsWalletConnected] = useState(false);
-  const [error, setError] = useState(null);
   const [address, setAddress] = useState(null);
+  const [isOwner, setIsOwner] = useState(false);
+  const [currentId, setCurrentId] = useState(null);
+  const [game, setGame] = useState(null);
+  const [contract, setContract] = useState(null);
 
-  const contractAddress = "0x75a5f2d25e3885ecde76f5327f423ec228d11c06";
+  const contractAddress = "0x2FA70990b49cb4d689201Bafb205DDfE12f57B49";
   const abi = Lottery.abi;
 
   const checkIfWalletIsConnected = async () => {
@@ -19,9 +22,14 @@ function App() {
         })
         setIsWalletConnected(true);
         setAddress(accounts[0]);
-        console.log("Account Connected: ", accounts[0]);
+
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = provider.getSigner();
+        const LotteryContract = new ethers.Contract(contractAddress, abi, signer);
+        setContract(LotteryContract);
+        const ownerAddress = await LotteryContract.getOwner();
+        setIsOwner(accounts[0].toLowerCase() === ownerAddress.toLowerCase());
       } else {
-        setError("Please install a MetaMask wallet to use our bank.");
         console.log("No Metamask detected");
       }
     } catch (error) {
@@ -31,16 +39,63 @@ function App() {
 
   const createGame = async () => {
     try {
-      if (window.ethereum) {
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        const signer = provider.getSigner();
-        const LotteryContract = new ethers.Contract(contractAddress, abi, signer);
-
-        const tx = await LotteryContract.createGame(
-          utils.parseEther("0.001"),
-          5 * 24 * 60 * 60
+      if (window.ethereum && contract) {
+        const tx = await contract.createGame(
+          utils.parseEther("0.0001"),
+          30 * 24 * 60 * 60
         );
         await tx.wait();
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
+  const getGameInfo = async () => {
+    // Get currentId
+    const responseID = await contract.getGamesCount();
+    const gamesCount = responseID.toNumber() - 1; // BigNumber conversion
+    setCurrentId(gamesCount);
+
+    // Get current game
+    const {
+      price, players, total, 
+      winner, hasWinner, endDate
+    } = await contract.getGame(gamesCount);
+
+    const priceInEther = utils.formatEther(price.toNumber());
+    const totalInEther = utils.formatEther(total.toNumber());
+    const endDateMillis = endDate.toNumber() * 1000;
+
+    const myGame = {
+      id: gamesCount,
+      players,
+      price: priceInEther,
+      total: totalInEther,
+      winner: winner.toString(),
+      hasWinner,
+      endDate: endDateMillis,
+    };
+    
+    setGame(myGame);
+  }
+
+  const takePart = async () => {
+    try {
+      if (window.ethereum && contract) {
+        const ticketPrice = utils.parseEther(game.price);
+        const tx = await contract.takePart(currentId, { value: ticketPrice });
+        await tx.wait();
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
+  const getCurrentGame = async () => {
+    try {
+      if (window.ethereum && contract) {
+        await getGameInfo();
       }
     } catch (error) {
       console.log(error);
@@ -51,17 +106,42 @@ function App() {
     checkIfWalletIsConnected();
   }, [])
 
+  useEffect(() => {
+    getCurrentGame();
+  }, [contract]);
+
   return (
     <div>
       <main className="container">
-        <section>
+        <section className="header">
           <h1>Lottery Game</h1>
+          <h3>Take part in a game and get a chance to win a mountain of money</h3>
+          { isOwner && <button className="button" onClick={createGame}>Create game</button>}
         </section>
 
-        <section className="games">
-          <h2>Current game</h2>
-          <p>aef</p>
-        </section>
+        {
+          contract && game && (
+            <section className="lottery">
+              <h2>Current Game</h2>
+              <h3>ends on {new Date(game.endDate).toLocaleDateString()}</h3>
+              <div className="stats">
+                <div className="stat">
+                  Final prize
+                  <span>{game.total} ether</span>
+                </div>
+                <div className="stat">
+                  Ticket price
+                  <span>{game.price} ether</span>
+                </div>
+                <div className="stat">
+                  Players
+                  <span>{game.players.length}</span>
+                </div>
+              </div>
+              <button className="button" onClick={takePart}>Take part</button>
+            </section>
+          )
+        }
       </main>
     </div>
   );
