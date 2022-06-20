@@ -4,39 +4,12 @@ import Lottery from "./artifacts/contracts/Lottery.sol/LotteryGame.json";
 import "./App.css";
 
 function App() {
-  const [isWalletConnected, setIsWalletConnected] = useState(false);
-  const [address, setAddress] = useState(null);
   const [isOwner, setIsOwner] = useState(false);
   const [currentId, setCurrentId] = useState(null);
   const [game, setGame] = useState(null);
   const [contract, setContract] = useState(null);
 
   const DAYS = 3;
-  const contractAddress = "0x2FA70990b49cb4d689201Bafb205DDfE12f57B49";
-  const abi = Lottery.abi;
-
-  const checkIfWalletIsConnected = async () => {
-    try {
-      if (window.ethereum) {
-        const accounts = await window.ethereum.request({
-          method: 'eth_requestAccounts'
-        })
-        setIsWalletConnected(true);
-        setAddress(accounts[0]);
-
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        const signer = provider.getSigner();
-        const LotteryContract = new ethers.Contract(contractAddress, abi, signer);
-        setContract(LotteryContract);
-        const ownerAddress = await LotteryContract.getOwner();
-        setIsOwner(accounts[0].toLowerCase() === ownerAddress.toLowerCase());
-      } else {
-        console.log("No Metamask detected");
-      }
-    } catch (error) {
-      console.log(error);
-    }
-  }
 
   const createGame = async () => {
     try {
@@ -53,32 +26,34 @@ function App() {
   }
 
   const getGameInfo = async () => {
-    // Get currentId
-    const responseID = await contract.getGamesCount();
-    const gamesCount = responseID.toNumber() - 1; // BigNumber conversion
-    setCurrentId(gamesCount);
+    if (!game) {
+      // Get currentId
+      const responseID = await contract.getGamesCount();
+      const gamesCount = responseID.toNumber() - 1;
+      setCurrentId(gamesCount);
 
-    // Get current game
-    const {
-      price, players, total, 
-      winner, hasWinner, endDate
-    } = await contract.getGame(gamesCount);
+      // Get current game
+      const {
+        price, players, total, 
+        winner, hasWinner, endDate
+      } = await contract.getGame(gamesCount);
 
-    const priceInEther = utils.formatEther(price.toNumber());
-    const totalInEther = utils.formatEther(total.toNumber());
-    const endDateMillis = endDate.toNumber() * 1000;
+      const priceInEther = utils.formatEther(price.toNumber());
+      const totalInEther = utils.formatEther(total.toNumber());
+      const endDateMillis = endDate.toNumber() * 1000;
 
-    const myGame = {
-      id: gamesCount,
-      players,
-      price: priceInEther,
-      total: totalInEther,
-      winner: winner.toString(),
-      hasWinner,
-      endDate: endDateMillis,
-    };
-    
-    setGame(myGame);
+      const myGame = {
+        id: gamesCount,
+        players,
+        price: priceInEther,
+        total: totalInEther,
+        winner: winner.toString(),
+        hasWinner,
+        endDate: endDateMillis,
+      };
+      
+      setGame(myGame);
+    }
   }
 
   const takePart = async () => {
@@ -93,22 +68,37 @@ function App() {
     }
   }
 
-  const getCurrentGame = async () => {
+  useEffect(() => {
+    const getContract = async () => {
+      const contractAddress = "0x2FA70990b49cb4d689201Bafb205DDfE12f57B49";
+      const abi = Lottery.abi;
+
+      const accounts = await window.ethereum.request({
+        method: 'eth_requestAccounts'
+      })
+
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      const LotteryContract = new ethers.Contract(contractAddress, abi, signer);
+      setContract(LotteryContract);
+      const ownerAddress = await LotteryContract.getOwner();
+      setIsOwner(accounts[0].toLowerCase() === ownerAddress.toLowerCase());
+    }
+
     try {
-      if (window.ethereum && contract) {
-        await getGameInfo();
+      if (window.ethereum) {
+        getContract();
+      } else {
+        console.log("No Metamask detected");
       }
     } catch (error) {
       console.log(error);
     }
-  }
-
-  useEffect(() => {
-    checkIfWalletIsConnected();
   }, [])
 
   useEffect(() => {
-    getCurrentGame();
+    getGameInfo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contract]);
 
   return (
