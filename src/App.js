@@ -11,6 +11,7 @@ function App() {
   const [game, setGame] = useState(null);
   const [contract, setContract] = useState(null);
 
+  const DAYS = 3;
   const contractAddress = "0x2FA70990b49cb4d689201Bafb205DDfE12f57B49";
   const abi = Lottery.abi;
 
@@ -42,7 +43,7 @@ function App() {
       if (window.ethereum && contract) {
         const tx = await contract.createGame(
           utils.parseEther("0.0001"),
-          30 * 24 * 60 * 60
+          DAYS * 24 * 3600
         );
         await tx.wait();
       }
